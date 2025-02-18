@@ -46,11 +46,6 @@ jobs:
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
     
     steps:
-      - name: Azure Login
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
@@ -66,4 +61,4 @@ jobs:
           app-name: 'zendesk-bot'
           slot-name: 'Production'
           package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_1B339DE9742944858F22C0733BCFC444 }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
