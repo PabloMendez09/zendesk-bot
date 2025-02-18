@@ -28,7 +28,9 @@ jobs:
           npm run test --if-present
 
       - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
+        run: |
+          # Exclude unwanted files to keep the artifact size lower
+          zip -r release.zip ./* -x "*.git*" "*.log" "node_modules/**/test/*" "node_modules/**/docs/*"
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -42,7 +44,8 @@ jobs:
     environment:
       name: 'Production'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-    
+    env:
+      NODE_OPTIONS: --max-old-space-size=8192  # Increase memory for deployment
     steps:
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
