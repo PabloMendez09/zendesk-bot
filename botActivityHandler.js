@@ -124,7 +124,7 @@ class BotActivityHandler extends TeamsActivityHandler {
     async sendToHTTP(payload) {
         try {
             const response = await axios.post(
-                'https://prod-143.westus.logic.azure.com:443/workflows/1b698ab5d2804c3e973103875b8ad8e1/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=G1ojtX0jlpkRO-HAUfSHz7zDWb4SIl_WDQWBiZIHjgo',
+                'https://prod-43.westus.logic.azure.com:443/workflows/2bf9c5a4e2d54a588104d8da6d78e6cf/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=BtU9vY-cJiZH9breTR4k4xUUeUPzfRezElCvOOTEr1E',
                 payload
             );
             console.log('HTTP response:', response.data);
