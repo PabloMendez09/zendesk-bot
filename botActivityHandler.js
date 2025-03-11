@@ -27,26 +27,13 @@ class BotActivityHandler extends TeamsActivityHandler {
             await next();
         });
 
-        // Initialize user data when the bot starts
+        // Send the email prompt as soon as the bot starts
         this.onMembersAdded(async (context, next) => {
-            const userId = context.activity.from.id;
-            this.userDataMap.set(userId, { isFirstInteraction: true, messageHistory: [], botResponseHistory: [] });
-
-            try {
-                const email = await this.getUserEmail(context);
-                if (email) {
-                    const userData = this.userDataMap.get(userId);
-                    userData.email = email;
-                    this.userDataMap.set(userId, userData);
-                    await context.sendActivity(`Thanks! Your email is ${email}. How can I assist you?`);
-                } else {
-                    await context.sendActivity('Please sign in to continue.');
-                }
-            } catch (error) {
-                console.error('Error fetching email:', error);
-                await context.sendActivity('Unable to retrieve your email. Please sign in manually.');
-            }
-
+            const userId = context.activity.from.id; // Unique user ID
+            this.userDataMap.set(userId, { isFirstInteraction: true, messageHistory: [] }); // Initialize user data
+            const botResponse = 'What is your email?';
+            await context.sendActivity(MessageFactory.text(botResponse));
+            this.saveBotResponse(userId, botResponse); // Save bot's response
             await next();
         });
     }
@@ -89,75 +76,44 @@ class BotActivityHandler extends TeamsActivityHandler {
      * Handle user input and send payloads
      */
     async handleUserInput(context, userMessage, userId) {
-        const userData = this.userDataMap.get(userId) || { isFirstInteraction: true, messageHistory: [], botResponseHistory: [] };
-
-        userData.messageHistory.push({ role: 'user', text: userMessage });
+        const userData = this.userDataMap.get(userId) || { isFirstInteraction: true, messageHistory: [] };
 
         if (userData.isFirstInteraction) {
+            // First interaction: Ask for email
             if (!userData.email) {
-                const email = await this.getUserEmail(context);
-                if (email) {
-                    userData.email = email;
-                    this.userDataMap.set(userId, userData);
-                    await this.storeAndSendMessage(context, userId, `Thanks! Your email is ${email}. How can I assist you?`);
-                } else {
-                    await this.storeAndSendMessage(context, userId, 'Please sign in to continue.');
-                }
-            } else {
-                userData.isFirstInteraction = false;
-                this.userDataMap.set(userId, userData);
+                userData.email = userMessage; // Save email
+                this.userDataMap.set(userId, userData); // Update user data
+                const botResponse = 'Please provide your message:';
+                await context.sendActivity(MessageFactory.text(botResponse));
+                this.saveBotResponse(userId, botResponse); // Save bot's response
+            } else if (!userData.message) {
+                userData.message = userMessage; // Save message
+                userData.messageHistory.push(userMessage); // Add user message to history
+                userData.isFirstInteraction = false; // Mark first interaction as complete
+                this.userDataMap.set(userId, userData); // Update user data
+
+                // Send the initial payload
                 await this.sendPayload(userData);
             }
         } else {
-            this.userDataMap.set(userId, userData);
+            // Subsequent interactions: Update message and send payload
+            userData.message = userMessage; // Update message
+            userData.messageHistory.push(userMessage); // Add user message to history
+            this.userDataMap.set(userId, userData); // Update user data
+
+            // Send the updated payload
             await this.sendPayload(userData);
         }
     }
 
     /**
-     * Fetch user email using Microsoft Graph API
+     * Save bot's response to the message history
      */
-    async getUserEmail(context) {
-        const token = await this.getUserToken(context);
-        if (!token) {
-            await context.sendActivity({
-                type: 'message',
-                text: 'Please sign in to continue.',
-                attachments: [
-                    {
-                        contentType: 'application/vnd.microsoft.card.oauth',
-                        content: {
-                            text: 'Sign in to proceed',
-                            connectionName: process.env.OAUTH_CONNECTION_NAME,
-                        },
-                    },
-                ],
-            });
-            return null;
-        }
-
-        try {
-            const response = await axios.get('https://graph.microsoft.com/v1.0/me', {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            return response.data.mail || response.data.userPrincipalName;
-        } catch (error) {
-            console.error('Error fetching email:', error);
-            return null;
-        }
-    }
-
-    /**
-     * Get user token using OAuth
-     */
-    async getUserToken(context) {
-        try {
-            const tokenResponse = await this.adapter.getUserToken(context, process.env.OAUTH_CONNECTION_NAME);
-            return tokenResponse?.token || null;
-        } catch (error) {
-            console.error('Error fetching token:', error);
-            return null;
+    saveBotResponse(userId, botResponse) {
+        const userData = this.userDataMap.get(userId);
+        if (userData) {
+            userData.messageHistory.push(botResponse); // Save bot's response without any prefix
+            this.userDataMap.set(userId, userData);
         }
     }
 
@@ -167,8 +123,7 @@ class BotActivityHandler extends TeamsActivityHandler {
     async sendPayload(userData) {
         const payload = {
             email: userData.email,
-            userMessages: userData.messageHistory,
-            botResponses: userData.botResponseHistory,
+            message: userData.messageHistory.join('\n'), // Combine all messages into one
         };
 
         console.log('Sending payload to WebSocket:', payload);
@@ -201,18 +156,8 @@ class BotActivityHandler extends TeamsActivityHandler {
             this.ws.send(JSON.stringify(payload));
         } else {
             console.error('WebSocket is not open. Attempting to reconnect...');
-            this.initWebSocket();
+            this.initWebSocket(); // Attempt to reconnect
         }
-    }
-
-    /**
-     * Store and send bot message
-     */
-    async storeAndSendMessage(context, userId, botMessage) {
-        const userData = this.userDataMap.get(userId);
-        userData.botResponseHistory.push({ role: 'bot', text: botMessage });
-        this.userDataMap.set(userId, userData);
-        await context.sendActivity(MessageFactory.text(botMessage));
     }
 
     /**
@@ -221,7 +166,9 @@ class BotActivityHandler extends TeamsActivityHandler {
     sendProactiveMessage(message) {
         if (this.conversationReference) {
             this.adapter.continueConversation(this.conversationReference, async (context) => {
-                await this.storeAndSendMessage(context, this.conversationReference.user.id, message);
+                await context.sendActivity(MessageFactory.text(message));
+                const userId = this.conversationReference.user.id;
+                this.saveBotResponse(userId, message); // Save bot's response
             });
         } else {
             console.error('No conversation reference available for proactive messaging.');
