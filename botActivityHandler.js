@@ -1,51 +1,59 @@
-const { TeamsActivityHandler, MessageFactory, TurnContext } = require('botbuilder');
+const { TeamsActivityHandler, MessageFactory, TurnContext, TeamsInfo  } = require('botbuilder');
 const axios = require('axios');
 const WebSocket = require('ws');
 
 class BotActivityHandler extends TeamsActivityHandler {
     constructor(adapter) {
         super();
+        this.adapter = adapter;
+        this.conversationReference = null;
+        this.ws = null;
+        this.userDataMap = new Map();
+        this.isWebSocketConnected = false;
+        this.messageQueue = [];
+        this.inactivityTimeout = 5 * 60 * 1000; // Disconnect WebSocket after 5 minutes of inactivity
+        this.inactivityTimer = null;
 
-        this.adapter = adapter; // Save adapter for proactive messaging
-        this.conversationReference = null; // Save conversation reference
-        this.ws = null; // WebSocket instance
-        this.userDataMap = new Map(); // Store user-specific data
-        this.initWebSocket(); // Initialize WebSocket connection
-
-        // Handle user messages
         this.onMessage(async (context, next) => {
-            const userMessage = context.activity.text.trim();
-            const userId = context.activity.from.id; // Unique user ID
+            const startTime = Date.now();
 
-            // Save conversation reference for proactive messaging
+            const userMessage = context.activity.text.trim();
+            const userId = context.activity.from.id;
             this.conversationReference = TurnContext.getConversationReference(context.activity);
             console.log('Conversation reference saved:', this.conversationReference);
 
-            // Handle user input and send payload
             await this.handleUserInput(context, userMessage, userId);
+
+            const elapsedTime = Date.now() - startTime;
+            console.log(`Response Time: ${elapsedTime}ms`);
 
             await next();
         });
 
-        // Send the email prompt as soon as the bot starts
         this.onMembersAdded(async (context, next) => {
-            const userId = context.activity.from.id; // Unique user ID
-            this.userDataMap.set(userId, { isFirstInteraction: true, messageHistory: [] }); // Initialize user data
-            const botResponse = 'What is your email?';
-            await context.sendActivity(MessageFactory.text(botResponse));
-            this.saveBotResponse(userId, botResponse); // Save bot's response
+            if (!this.isWebSocketConnected && (!this.ws || this.ws.readyState !== WebSocket.CONNECTING)) {
+                console.log('Initializing WebSocket due to bot being opened...');
+                this.initWebSocket();
+            }
             await next();
         });
     }
 
-    /**
-     * Initialize WebSocket connection with reconnection logic
-     */
     initWebSocket() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            console.log('WebSocket is already open.');
+            return;
+        }
+
+        console.log('Initializing WebSocket...');
         this.ws = new WebSocket('wss://zendeskendpoint-cadne9guf2g3bmf6.canadacentral-01.azurewebsites.net');
 
         this.ws.on('open', () => {
             console.log('WebSocket connected.');
+            this.isWebSocketConnected = true;
+            this.resetInactivityTimer();
+            this.processMessageQueue();
+            this.sendProactiveMessage('✅ Bot is back online! You can continue your conversation.');
         });
 
         this.ws.on('message', (data) => {
@@ -53,9 +61,12 @@ class BotActivityHandler extends TeamsActivityHandler {
                 const response = JSON.parse(data);
                 if (response.message) {
                     console.log('WebSocket response:', response.message);
+                    if (response.resetToken === true) {
+                        console.log('Reset token detected. Clearing message history.');
+                        this.userDataMap.set(this.conversationReference.user.id, { messageHistory: [] });
+                    }
                     this.sendProactiveMessage(response.message);
-                } else {
-                    console.warn('Empty message received from WebSocket.');
+                    this.resetInactivityTimer();
                 }
             } catch (error) {
                 console.error('Error parsing WebSocket message:', error);
@@ -63,115 +74,108 @@ class BotActivityHandler extends TeamsActivityHandler {
         });
 
         this.ws.on('close', () => {
-            console.log('WebSocket disconnected. Attempting to reconnect...');
-            setTimeout(() => this.initWebSocket(), 5000); // Reconnect after 5 seconds
+            console.log('WebSocket disconnected.');
+            this.isWebSocketConnected = false;
         });
 
-        this.ws.on('error', (error) => {
-            console.error('WebSocket error:', error);
+        this.ws.on('error', (err) => {
+            console.error('WebSocket error:', err);
         });
     }
 
-    /**
-     * Handle user input and send payloads
-     */
+    resetInactivityTimer() {
+        clearTimeout(this.inactivityTimer);
+        this.inactivityTimer = setTimeout(() => {
+            console.log('User inactive for 5 minutes. Closing WebSocket to free resources.');
+            if (this.ws) this.ws.close();
+            this.isWebSocketConnected = false;
+        }, this.inactivityTimeout);
+    }
+
     async handleUserInput(context, userMessage, userId) {
-        const userData = this.userDataMap.get(userId) || { isFirstInteraction: true, messageHistory: [] };
-
-        if (userData.isFirstInteraction) {
-            // First interaction: Ask for email
-            if (!userData.email) {
-                userData.email = userMessage; // Save email
-                this.userDataMap.set(userId, userData); // Update user data
-                const botResponse = 'Please provide your message:';
-                await context.sendActivity(MessageFactory.text(botResponse));
-                this.saveBotResponse(userId, botResponse); // Save bot's response
-            } else if (!userData.message) {
-                userData.message = userMessage; // Save message
-                userData.messageHistory.push(userMessage); // Add user message to history
-                userData.isFirstInteraction = false; // Mark first interaction as complete
-                this.userDataMap.set(userId, userData); // Update user data
-
-                // Send the initial payload
-                await this.sendPayload(userData);
-            }
-        } else {
-            // Subsequent interactions: Update message and send payload
-            userData.message = userMessage; // Update message
-            userData.messageHistory.push(userMessage); // Add user message to history
-            this.userDataMap.set(userId, userData); // Update user data
-
-            // Send the updated payload
-            await this.sendPayload(userData);
+        if (!this.isWebSocketConnected && (!this.ws || this.ws.readyState !== WebSocket.CONNECTING)) {
+            console.log('Reconnecting WebSocket due to user activity...');
+            this.initWebSocket();
         }
-    }
-
-    /**
-     * Save bot's response to the message history
-     */
-    saveBotResponse(userId, botResponse) {
-        const userData = this.userDataMap.get(userId);
-        if (userData) {
-            userData.messageHistory.push(botResponse); // Save bot's response without any prefix
-            this.userDataMap.set(userId, userData);
-        }
-    }
-
-    /**
-     * Send payload to WebSocket and HTTP endpoint
-     */
-    async sendPayload(userData) {
-        const payload = {
-            email: userData.email,
-            message: userData.messageHistory.join('\n'), // Combine all messages into one
-        };
-
-        console.log('Sending payload to WebSocket:', payload);
-        this.sendToWebSocket(payload);
-
-        console.log('Sending payload to HTTP endpoint:', payload);
-        await this.sendToHTTP(payload);
-    }
-
-    /**
-     * Send data to HTTP endpoint
-     */
-    async sendToHTTP(payload) {
+        this.resetInactivityTimer();
+    
+        let userData = this.userDataMap.get(userId) || { messageHistory: [] };
+    
+        let userEmail = "Chris.Chapman@lionbridge.com"; // Default fallback
         try {
-            const response = await axios.post(
-                'https://prod-143.westus.logic.azure.com:443/workflows/1b698ab5d2804c3e973103875b8ad8e1/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=G1ojtX0jlpkRO-HAUfSHz7zDWb4SIl_WDQWBiZIHjgo',
-                payload
-            );
-            console.log('HTTP response:', response.data);
+            const teamsMember = await TeamsInfo.getMember(context, context.activity.from.id);
+            userEmail = teamsMember.email || userEmail;
         } catch (error) {
-            console.error('Error sending to HTTP endpoint:', error.response ? error.response.data : error.message);
+            console.error("❌ Unable to get user email:", error);
         }
+    
+        userData.messageHistory.push(`user: ${userMessage}`);
+        this.userDataMap.set(userId, userData);
+    
+        console.log(`✅ Retrieved User Email: ${userEmail}`);
+    
+        // ✅ Fix: Send ephemeral typing event (no extra space in Teams)
+        await context.sendActivity({ type: 'typing', deliveryMode: 'expectReplies' });
+    
+        // ✅ Send message to WebSocket & API with user's real email
+        this.sendPayload(context, userData, userEmail);
     }
+    
 
-    /**
-     * Send data to WebSocket server
-     */
+    async sendPayload(context, userData, userEmail) {
+        const payload = {
+            email: userEmail, // Now sending the real user email
+            message: userData.messageHistory.join('\n'),
+        };
+        console.log('Sending payload:', payload);
+    
+        await Promise.all([
+            this.sendToWebSocket(payload),
+            this.sendToHTTP(payload).catch(error => {
+                console.error('HTTP Request Failed:', error.message);
+            }),
+        ]);
+    }
+    
+
     sendToWebSocket(payload) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(payload));
         } else {
-            console.error('WebSocket is not open. Attempting to reconnect...');
-            this.initWebSocket(); // Attempt to reconnect
+            console.error('WebSocket not open. Adding message to queue.');
+            this.messageQueue.push(payload);
         }
     }
 
-    /**
-     * Send proactive message to user
-     */
-    sendProactiveMessage(message) {
+    processMessageQueue() {
+        if (this.messageQueue.length > 0) {
+            console.log(`Processing ${this.messageQueue.length} queued messages.`);
+            this.messageQueue.forEach(payload => this.sendToWebSocket(payload));
+            this.messageQueue = [];
+        }
+    }
+
+    async sendToHTTP(payload) {
+        try {
+            const response = await axios.post('https://prod-143.westus.logic.azure.com:443/workflows/1b698ab5d2804c3e973103875b8ad8e1/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=G1ojtX0jlpkRO-HAUfSHz7zDWb4SIl_WDQWBiZIHjgo', payload);
+            console.log('✅ HTTP Request Successful:', response.status);
+        } catch (error) {
+            console.error('HTTP Request Failed:', error.response ? error.response.data : error.message);
+            throw error;
+        }
+    }
+
+    async sendProactiveMessage(message) {
         if (this.conversationReference) {
             this.adapter.continueConversation(this.conversationReference, async (context) => {
                 await context.sendActivity(MessageFactory.text(message));
+                
+                // ✅ Add bot response to message history
                 const userId = this.conversationReference.user.id;
-                this.saveBotResponse(userId, message); // Save bot's response
+                let userData = this.userDataMap.get(userId) || { messageHistory: [] };
+                userData.messageHistory.push(`bot: ${message}`);
+                this.userDataMap.set(userId, userData);
             });
-        } else {
-            console.error('No conversation reference available for proactive messaging.');
         }
     }
 }
