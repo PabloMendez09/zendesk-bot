@@ -53,7 +53,7 @@ class BotActivityHandler extends TeamsActivityHandler {
             this.isWebSocketConnected = true;
             this.resetInactivityTimer();
             this.processMessageQueue();
-            this.sendProactiveMessage('✅ Bot is back online! You can continue your conversation.');
+           
         });
 
         this.ws.on('message', (data) => {
@@ -61,10 +61,18 @@ class BotActivityHandler extends TeamsActivityHandler {
                 const response = JSON.parse(data);
                 if (response.message) {
                     console.log('WebSocket response:', response.message);
+        
+                    // Check for resetToken in the response
                     if (response.resetToken === true) {
                         console.log('Reset token detected. Clearing message history.');
-                        this.userDataMap.set(this.conversationReference.user.id, { messageHistory: [] });
+                        const userId = this.conversationReference.user.id;
+                        let userData = this.userDataMap.get(userId) || { messageHistory: [] };
+                        userData.messageHistory = []; // Clear the message history
+                        userData.resetToken = true; // Set the resetToken flag
+                        this.userDataMap.set(userId, userData);
                     }
+        
+                    // Send the response message to the user
                     this.sendProactiveMessage(response.message);
                     this.resetInactivityTimer();
                 }
@@ -114,10 +122,9 @@ class BotActivityHandler extends TeamsActivityHandler {
     
         console.log(`✅ Retrieved User Email: ${userEmail}`);
     
-        // ✅ Fix: Send ephemeral typing event (no extra space in Teams)
-        await context.sendActivity({ type: 'typing', deliveryMode: 'expectReplies' });
+        await context.sendActivity({ type: 'typing'});
     
-        // ✅ Send message to WebSocket & API with user's real email
+        // ✅ Send message to WebSocket & API with user real email
         this.sendPayload(context, userData, userEmail);
     }
     
