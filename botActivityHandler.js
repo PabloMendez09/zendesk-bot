@@ -66,7 +66,7 @@ class BotActivityHandler extends TeamsActivityHandler {
                     if (response.resetToken === true) {
                         console.log('Reset token detected. Clearing message history.');
                         const userId = this.conversationReference.user.id;
-                        let userData = this.userDataMap.get(userId) || { messageHistory: [] };
+                        let userData = this.userDataMap.get(userId) || { messageHistory: [], resetToken: false };
                         userData.messageHistory = []; // Clear the message history
                         userData.resetToken = true; // Set the resetToken flag
                         this.userDataMap.set(userId, userData);
@@ -107,7 +107,14 @@ class BotActivityHandler extends TeamsActivityHandler {
         }
         this.resetInactivityTimer();
     
-        let userData = this.userDataMap.get(userId) || { messageHistory: [] };
+        let userData = this.userDataMap.get(userId) || { messageHistory: [], resetToken: false };
+    
+        // Check if resetToken is true and clear the message history
+        if (userData.resetToken) {
+            console.log('Reset token detected. Clearing message history.');
+            userData.messageHistory = []; // Clear the message history
+            userData.resetToken = false; // Reset the flag
+        }
     
         let userEmail = "Chris.Chapman@lionbridge.com"; // Default fallback
         try {
