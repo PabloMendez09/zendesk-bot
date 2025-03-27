@@ -1,35 +1,35 @@
 {
-    "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
-    "manifestVersion": "1.19",
-    "version": "1.0.0",
-    "id": "17a865da-9312-42d9-af3a-c49067284486",
-    "developer": {
-      "name": "Your Company",
-      "websiteUrl": "https://your-website.com",
-      "privacyUrl": "https://your-website.com/privacy",
-      "termsOfUseUrl": "https://your-website.com/terms"
-    },
-    "icons": {
-      "color": "color.png",
-      "outline": "outline.png"
-    },
-    "name": {
-      "short": "Clean Bot",
-      "full": "Clean Bot for Teams"
-    },
-    "description": {
-      "short": "A clean bot for Microsoft Teams",
-      "full": "This is a clean bot built for Microsoft Teams using the Bot Framework."
-    },
-    "accentColor": "#FFFFFF",
-    "bots": [
-      {
-        "botId": "17a865da-9312-42d9-af3a-c49067284486",
-        "scopes": ["personal", "team", "groupchat"],
-        "supportsFiles": false,
-        "isNotificationOnly": false
-      }
-    ],
-    "permissions": ["identity", "messageTeamMembers"],
-    "validDomains": ["token.botframework.com", "zendesk-bot-bzcwasdtg0eadees.canadacentral-01.azurewebsites.net"]
-  }
+  "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.19/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.19",
+"version": "1.0.2",
+  "id": "17a865da-9312-42d9-af3a-c49067284486",
+  "developer": {
+"name": "Liox-Technology",
+    "websiteUrl": "https://your-website.com",
+    "privacyUrl": "https://your-website.com/privacy",
+    "termsOfUseUrl": "https://your-website.com/terms"
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "name": {
+ "short": "CubScout",
+    "full": "CubScout Chatbot LLM"
+  },
+  "description": {
+"short": "An autonomous AI Agent in Teams",
+    "full": "A cutting-edge chatbot designed to seamlessly integrate with Zendesk, empowering end users with efficient and intelligent support solutions. This dynamic AI agent revolutionizes the way users interact with customer service platforms by providing a robust, natural language interface directly within Teams, streamlining troubleshooting processes and enhancing productivity.  Tapping the powers of generative AI, this chatbot can troubleshoot issues, collect pertinent data, and execute actions such as creating, updating, and summarizing tickets, all within the familiar environment of Microsoft Teams."
+  },
+  "accentColor": "#FFFFFF",
+  "bots": [
+    {
+      "botId": "17a865da-9312-42d9-af3a-c49067284486",
+      "scopes": ["personal", "team", "groupchat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["token.botframework.com", "zendesk-bot-bzcwasdtg0eadees.canadacentral-01.azurewebsites.net"]
+}
