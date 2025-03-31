@@ -6,7 +6,7 @@ class BotActivityHandler extends TeamsActivityHandler {
     constructor(adapter) {
         super();
         this.adapter = adapter;
-        this.conversationReferences = new Map(); // Store conversation references per user
+        this.conversationReferences = new Map(); // Store conversation references per user 
         this.userDataMap = new Map(); // Store user-specific data
         this.ws = null;
         this.messageQueue = [];
