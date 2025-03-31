@@ -1,5 +1,3 @@
-Explain this:
-
 const { TeamsActivityHandler, MessageFactory, TurnContext, TeamsInfo  } = require('botbuilder');
 const axios = require('axios');
 const WebSocket = require('ws');
