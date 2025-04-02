@@ -19,7 +19,6 @@
     "express": "^4.21.2",
     "formidable": "^3.5.2",
     "restify": "^11.1.0",
-    "teams-bot": "file:",
     "ws": "^8.16.0"
   }
 }
