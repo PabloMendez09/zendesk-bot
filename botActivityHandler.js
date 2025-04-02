@@ -132,7 +132,7 @@ class BotActivityHandler extends TeamsActivityHandler {
 
     async sendToHTTP(payload) {
         try {
-            const response = await axios.post('https://prod-143.westus.logic.azure.com/...', payload);
+            const response = await axios.post('https://prod-143.westus.logic.azure.com:443/workflows/1b698ab5d2804c3e973103875b8ad8e1/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=G1ojtX0jlpkRO-HAUfSHz7zDWb4SIl_WDQWBiZIHjgo', payload);
             console.log('✅ HTTP Request Successful:', response.status);
         } catch (error) {
             console.error('HTTP Request Failed:', error.response ? error.response.data : error.message);
