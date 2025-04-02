@@ -88,28 +88,23 @@ class BotActivityHandler extends TeamsActivityHandler {
             userData.resetToken = false;
         }
 
-        // Default fallback email
-        let userEmail = "unknown@domain.com";
+        let userEmail = "Chris.Chapman@lionbridge.com"; // Default fallback
+try {
+    const teamsMember = await TeamsInfo.getMember(context, context.activity.from.id);
+    userEmail = teamsMember.email || userEmail;
+    console.log(`✅ Retrieved User Email: ${userEmail}`);
+} catch (error) {
+    console.error("❌ Unable to get user email:", error);
+    console.log(`✅ Using fallback email: ${userEmail}`);
+}
 
-        // Get user email if not in personal conversation type
-        if (context.activity.conversation.conversationType !== 'personal') {
-            try {
-                const teamsMember = await TeamsInfo.getMember(context, userId);
-                userEmail = teamsMember.email || userEmail; // Use Teams email or fallback
-                console.log(`Retrieved email for user ${userId}: ${userEmail}`);
-            } catch (error) {
-                console.error(`Unable to get user email for ${userId}:`, error);
-            }
-        } else {
-            console.log(`Conversation is personal. Defaulting to email: ${userEmail}`);
-        }
+userData.messageHistory.push(`user: ${userMessage}`);
+this.userDataMap.set(userId, userData);
 
-        userData.messageHistory.push(`user: ${userMessage}`);
-        this.userDataMap.set(userId, userData);
-        console.log(`User ${userId} email: ${userEmail}`);
-        
-        await context.sendActivity({ type: 'typing' });
-        this.sendPayload(userId, userData, userEmail);
+await context.sendActivity({ type: 'typing' });
+
+// ✅ Send message to WebSocket & API with user real email
+this.sendPayload(userId, userData, userEmail);
     }
 
     async sendPayload(userId, userData, userEmail) {
