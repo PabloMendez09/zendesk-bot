@@ -25,7 +25,7 @@ class BotActivityHandler extends TeamsActivityHandler {
             await this.handleUserInput(context, userMessage, userId);
 
             const elapsedTime = Date.now() - startTime;
-            console.log(Response Time: ${elapsedTime}ms);
+            console.log(`Response Time: ${elapsedTime}ms`);
 
             await next();
         });
@@ -124,10 +124,10 @@ class BotActivityHandler extends TeamsActivityHandler {
             console.error("❌ Unable to get user email:", error);
         }
     
-        userData.messageHistory.push(user: ${userMessage});
+        userData.messageHistory.push(`user: ${userMessage}`);
         this.userDataMap.set(userId, userData);
     
-        console.log(✅ Retrieved User Email: ${userEmail});
+        console.log(`✅ Retrieved User Email: ${userEmail}`);
     
         await context.sendActivity({ type: 'typing'});
     
@@ -163,7 +163,7 @@ class BotActivityHandler extends TeamsActivityHandler {
 
     processMessageQueue() {
         if (this.messageQueue.length > 0) {
-            console.log(Processing ${this.messageQueue.length} queued messages.);
+            console.log(`Processing ${this.messageQueue.length} queued messages.`);
             this.messageQueue.forEach(payload => this.sendToWebSocket(payload));
             this.messageQueue = [];
         }
@@ -187,7 +187,7 @@ class BotActivityHandler extends TeamsActivityHandler {
                 // ✅ Add bot response to message history
                 const userId = this.conversationReference.user.id;
                 let userData = this.userDataMap.get(userId) || { messageHistory: [] };
-                userData.messageHistory.push(bot: ${message});
+                userData.messageHistory.push(`bot: ${message}`);
                 this.userDataMap.set(userId, userData);
             });
         }
