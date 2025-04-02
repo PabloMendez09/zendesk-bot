@@ -6,11 +6,12 @@ class BotActivityHandler extends TeamsActivityHandler {
     constructor(adapter) {
         super();
         this.adapter = adapter;
-        this.conversationReferences = new Map(); // Store conversation references per user
-        this.userDataMap = new Map(); // Store user-specific data
+        this.conversationReferences = new Map(); 
+        this.userDataMap = new Map(); 
         this.ws = null;
         this.messageQueue = [];
-        this.inactivityTimeout = 5 * 60 * 1000; // 5 minutes
+        this.inactivityTimeout = 5 * 60 * 1000;
+        this.reconnectTimeout = null;
 
         this.onMessage(async (context, next) => {
             const userId = context.activity.from.id;
@@ -18,6 +19,7 @@ class BotActivityHandler extends TeamsActivityHandler {
             this.conversationReferences.set(userId, TurnContext.getConversationReference(context.activity));
             console.log(`Conversation reference saved for ${userId}`);
 
+            await context.sendActivity(MessageFactory.text("Processing your request..."));
             await this.handleUserInput(context, userMessage, userId);
             await next();
         });
@@ -40,6 +42,10 @@ class BotActivityHandler extends TeamsActivityHandler {
         this.ws.on('open', () => {
             console.log('WebSocket connected.');
             this.processMessageQueue();
+            if (this.reconnectTimeout) {
+                clearTimeout(this.reconnectTimeout);
+                this.reconnectTimeout = null;
+            }
         });
 
         this.ws.on('message', (data) => {
@@ -47,15 +53,10 @@ class BotActivityHandler extends TeamsActivityHandler {
                 const response = JSON.parse(data);
                 if (response.message && response.userId) {
                     console.log(`WebSocket response for ${response.userId}:`, response.message);
-
                     if (response.resetToken) {
                         console.log(`Resetting message history for ${response.userId}`);
-                        const userData = this.userDataMap.get(response.userId) || { messageHistory: [], resetToken: false };
-                        userData.messageHistory = [];
-                        userData.resetToken = true;
-                        this.userDataMap.set(response.userId, userData);
+                        this.userDataMap.set(response.userId, { messageHistory: [], resetToken: true });
                     }
-
                     this.sendProactiveMessage(response.userId, response.message);
                     this.resetInactivityTimer(response.userId);
                 }
@@ -66,7 +67,9 @@ class BotActivityHandler extends TeamsActivityHandler {
 
         this.ws.on('close', () => {
             console.log('WebSocket disconnected. Retrying in 5 seconds...');
-            setTimeout(() => this.initWebSocket(), 5000);
+            if (!this.reconnectTimeout) {
+                this.reconnectTimeout = setTimeout(() => this.initWebSocket(), 5000);
+            }
         });
 
         this.ws.on('error', (err) => {
@@ -77,27 +80,27 @@ class BotActivityHandler extends TeamsActivityHandler {
     async handleUserInput(context, userMessage, userId) {
         this.initWebSocket();
         this.resetInactivityTimer(userId);
-
         let userData = this.userDataMap.get(userId) || { messageHistory: [], resetToken: false };
-
         if (userData.resetToken) {
             console.log(`Clearing message history for ${userId}`);
             userData.messageHistory = [];
             userData.resetToken = false;
         }
-
+        
         let userEmail = "Chris.Chapman@lionbridge.com";
-        try {
-            const teamsMember = await TeamsInfo.getMember(context, userId);
-            userEmail = teamsMember.email || userEmail;
-        } catch (error) {
-            console.error(`Unable to get user email for ${userId}:`, error);
+        if (context.activity.conversation.conversationType !== 'personal') {
+            try {
+                const teamsMember = await TeamsInfo.getMember(context, userId);
+                userEmail = teamsMember.email || userEmail;
+            } catch (error) {
+                console.error(`Unable to get user email for ${userId}:`, error);
+            }
         }
-
+        
         userData.messageHistory.push(`user: ${userMessage}`);
         this.userDataMap.set(userId, userData);
         console.log(`User ${userId} email: ${userEmail}`);
-
+        
         await context.sendActivity({ type: 'typing' });
         this.sendPayload(userId, userData, userEmail);
     }
@@ -108,9 +111,7 @@ class BotActivityHandler extends TeamsActivityHandler {
 
         await Promise.all([
             this.sendToWebSocket(payload),
-            this.sendToHTTP(payload).catch(error => {
-                console.error('HTTP Request Failed:', error.message);
-            }),
+            this.sendToHTTP(payload).catch(error => console.error('HTTP Request Failed:', error.message))
         ]);
     }
 
@@ -131,7 +132,7 @@ class BotActivityHandler extends TeamsActivityHandler {
 
     async sendToHTTP(payload) {
         try {
-            const response = await axios.post('https://prod-143.westus.logic.azure.com:443/workflows/1b698ab5d2804c3e973103875b8ad8e1/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=G1ojtX0jlpkRO-HAUfSHz7zDWb4SIl_WDQWBiZIHjgo', payload);
+            const response = await axios.post('https://prod-143.westus.logic.azure.com/...', payload);
             console.log('✅ HTTP Request Successful:', response.status);
         } catch (error) {
             console.error('HTTP Request Failed:', error.response ? error.response.data : error.message);
@@ -141,26 +142,28 @@ class BotActivityHandler extends TeamsActivityHandler {
 
     async sendProactiveMessage(userId, message) {
         const reference = this.conversationReferences.get(userId);
-        if (reference) {
+        if (reference && this.adapter) {
             this.adapter.continueConversation(reference, async (context) => {
                 await context.sendActivity(MessageFactory.text(message));
                 let userData = this.userDataMap.get(userId) || { messageHistory: [] };
                 userData.messageHistory.push(`bot: ${message}`);
                 this.userDataMap.set(userId, userData);
             });
+        } else {
+            console.error(`No adapter or reference found for ${userId}`);
         }
     }
 
     resetInactivityTimer(userId) {
         let userData = this.userDataMap.get(userId) || { messageHistory: [], inactivityTimer: null };
-        clearTimeout(userData.inactivityTimer);
-
+        if (userData.inactivityTimer) {
+            clearTimeout(userData.inactivityTimer);
+        }
         userData.inactivityTimer = setTimeout(() => {
             console.log(`User ${userId} inactive for 5 minutes. Removing data.`);
             this.userDataMap.delete(userId);
             this.conversationReferences.delete(userId);
         }, this.inactivityTimeout);
-
         this.userDataMap.set(userId, userData);
     }
 }
