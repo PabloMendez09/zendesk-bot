@@ -49,6 +49,7 @@ class BotActivityHandler extends TeamsActivityHandler {
         });
 
         this.ws.on('message', (data) => {
+            console.log("Raw WebSocket message:", data); // Add logging for raw message
             try {
                 const response = JSON.parse(data);
                 if (response.message && response.userId) {
@@ -86,17 +87,23 @@ class BotActivityHandler extends TeamsActivityHandler {
             userData.messageHistory = [];
             userData.resetToken = false;
         }
-        
-        let userEmail = "Chris.Chapman@lionbridge.com";
+
+        // Default fallback email
+        let userEmail = "unknown@domain.com";
+
+        // Get user email if not in personal conversation type
         if (context.activity.conversation.conversationType !== 'personal') {
             try {
                 const teamsMember = await TeamsInfo.getMember(context, userId);
-                userEmail = teamsMember.email || userEmail;
+                userEmail = teamsMember.email || userEmail; // Use Teams email or fallback
+                console.log(`Retrieved email for user ${userId}: ${userEmail}`);
             } catch (error) {
                 console.error(`Unable to get user email for ${userId}:`, error);
             }
+        } else {
+            console.log(`Conversation is personal. Defaulting to email: ${userEmail}`);
         }
-        
+
         userData.messageHistory.push(`user: ${userMessage}`);
         this.userDataMap.set(userId, userData);
         console.log(`User ${userId} email: ${userEmail}`);
@@ -117,6 +124,7 @@ class BotActivityHandler extends TeamsActivityHandler {
 
     sendToWebSocket(payload) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            console.log("Sending to WebSocket:", JSON.stringify(payload));
             this.ws.send(JSON.stringify(payload));
         } else {
             console.error('WebSocket not open. Adding message to queue.');
@@ -150,6 +158,7 @@ class BotActivityHandler extends TeamsActivityHandler {
     async sendProactiveMessage(userId, message) {
         const reference = this.conversationReferences.get(userId);
         if (reference && this.adapter) {
+            console.log(`Sending proactive message to user ${userId}:`, message); // Log the message
             this.adapter.continueConversation(reference, async (context) => {
                 await context.sendActivity(MessageFactory.text(message));
                 let userData = this.userDataMap.get(userId) || { messageHistory: [] };
