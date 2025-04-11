@@ -55,31 +55,57 @@ class BotActivityHandler extends TeamsActivityHandler {
             this.processMessageQueue();
            
         });
-
-        this.ws.on('message', (data) => {
-            try {
-                const response = JSON.parse(data);
-                if (response.message) {
-                    console.log('WebSocket response:', response.message);
-        
-                    // Check for resetToken in the response
-                    if (response.resetToken === true) {
-                        console.log('Reset token detected. Clearing message history.');
-                        const userId = this.conversationReference.user.id;
-                        let userData = this.userDataMap.get(userId) || { messageHistory: [], resetToken: false };
-                        userData.messageHistory = []; // Clear the message history
-                        userData.resetToken = true; // Set the resetToken flag
-                        this.userDataMap.set(userId, userData);
+            
+            this.ws.on('message', async (data) => {
+                try {
+                    // Log received WebSocket message
+                    const decodedMessage = data.toString();  // Convert Buffer to string
+                    console.log('WebSocket message received:', decodedMessage);
+            
+                    const response = JSON.parse(decodedMessage);
+            
+                    if (response.userId && response.conversationId && response.message) {
+                        console.log('Received userId:', response.userId);
+                        console.log('Received conversationId:', response.conversationId);
+                        const key = `${response.userId}:${response.conversationId}`;
+                        
+                        // Log the key being used for the userDataMap
+                        console.log('Key for sending proactive message:', key);
+                        
+                        // Retrieve user data from map or initialize if not present
+                        let userData = this.userDataMap.get(key) || { messageHistory: [], resetToken: false };
+            
+                        // Log the current state of userData
+                        console.log('Current user data:', userData);
+                        
+                        // If resetToken is true, clear message history
+                        if (response.resetToken === true) {
+                            console.log('Reset token detected. Clearing message history.');
+                            userData.messageHistory = [];
+                            userData.resetToken = true;
+                        }
+            
+                        // Log before calling sendProactiveMessageToConversation
+                        console.log('Calling sendProactiveMessageToConversation...');
+                        await this.sendProactiveMessageToConversation(key, response.message);
+            
+                        // Log message being sent to user after reset
+                        console.log('Sending message to user after reset:', response.message);
+            
+                        // Update the message history and store the updated user data
+                        userData.messageHistory.push(`bot: ${response.message}`);
+                        this.userDataMap.set(key, userData);
                     }
-        
-                    // Send the response message to the user
-                    this.sendProactiveMessage(response.message);
-                    this.resetInactivityTimer();
+
+                 else {
+                    console.error('Missing userId or conversationId in WebSocket message');
                 }
-            } catch (error) {
-                console.error('Error parsing WebSocket message:', error);
-            }
-        });
+
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            });
+            
 
         this.ws.on('close', () => {
             console.log('WebSocket disconnected.');
@@ -101,13 +127,25 @@ class BotActivityHandler extends TeamsActivityHandler {
     }
 
     async handleUserInput(context, userMessage, userId) {
+        console.log('Handling user input:', userMessage); // Log the user's message
         if (!this.isWebSocketConnected && (!this.ws || this.ws.readyState !== WebSocket.CONNECTING)) {
             console.log('Reconnecting WebSocket due to user activity...');
             this.initWebSocket();
         }
         this.resetInactivityTimer();
     
-        let userData = this.userDataMap.get(userId) || { messageHistory: [], resetToken: false };
+        const conversationId = context.activity.conversation.id;
+        const key = `${userId}:${conversationId}`; // 🆕 composite key
+
+            let userData = this.userDataMap.get(key) || { messageHistory: [], resetToken: false };
+
+            // 🆕 Store conversationReference
+            const conversationReference = TurnContext.getConversationReference(context.activity);
+            this.userDataMap.set(key, {
+            ...userData,
+                conversationReference,
+            });
+
     
         // Check if resetToken is true and clear the message history
         if (userData.resetToken) {
@@ -132,16 +170,20 @@ class BotActivityHandler extends TeamsActivityHandler {
         await context.sendActivity({ type: 'typing'});
     
         // ✅ Send message to WebSocket & API with user real email
-        this.sendPayload(context, userData, userEmail);
+        await this.sendPayload(context, userData, userEmail, userId);
     }
     
 
-    async sendPayload(context, userData, userEmail) {
+    async sendPayload(context, userData, userEmail, userId) {
         const payload = {
+            userId: userId,
+            conversationId: context.activity.conversation.id,
             email: userEmail, // Now sending the real user email
             message: userData.messageHistory.join('\n'),
         };
         console.log('Sending payload:', payload);
+
+        console.log('WebSocket open:', this.ws.readyState === WebSocket.OPEN); // Log WebSocket state
     
         await Promise.all([
             this.sendToWebSocket(payload),
@@ -154,6 +196,7 @@ class BotActivityHandler extends TeamsActivityHandler {
 
     sendToWebSocket(payload) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            console.log('WebSocket is open. Sending payload:', payload); // Log when sending a payload
             this.ws.send(JSON.stringify(payload));
         } else {
             console.error('WebSocket not open. Adding message to queue.');
@@ -192,6 +235,35 @@ class BotActivityHandler extends TeamsActivityHandler {
             });
         }
     }
+
+    async sendProactiveMessageToConversation(key, message) {
+        console.log("can you see me")
+        const userData = this.userDataMap.get(key);
+        if (!userData || !userData.conversationReference) {
+            console.error(`No conversation reference found for key: ${key}`);
+            return;
+        }
+    
+        // Log the message being sent
+        console.log(`Sending message to user: ${message}`);
+    
+        try {
+            // Log that the conversation is being continued
+            console.log('Continuing conversation...');
+    
+            await this.adapter.continueConversation(userData.conversationReference, async (context) => {
+                console.log(`Sending message: ${message}`);
+                await context.sendActivity(MessageFactory.text(message));
+            });
+    
+            // Confirm message was sent
+            console.log('Message sent to user successfully.');
+        } catch (error) {
+            console.error('Error sending message:', error);
+        }
+    }
+    
+    
 }
 
 module.exports.BotActivityHandler = BotActivityHandler;
