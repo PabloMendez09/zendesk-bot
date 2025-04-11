@@ -18,11 +18,11 @@ class BotActivityHandler extends TeamsActivityHandler {
             const startTime = Date.now();
 
             const userMessage = context.activity.text.trim();
-            const userId = context.activity.from.id;
+            const userID = context.activity.from.id;
             this.conversationReference = TurnContext.getConversationReference(context.activity);
             console.log('Conversation reference saved:', this.conversationReference);
 
-            await this.handleUserInput(context, userMessage, userId);
+            await this.handleUserInput(context, userMessage, userID);
 
             const elapsedTime = Date.now() - startTime;
             console.log(`Response Time: ${elapsedTime}ms`);
@@ -64,10 +64,10 @@ class BotActivityHandler extends TeamsActivityHandler {
             
                     const response = JSON.parse(decodedMessage);
             
-                    if (response.userId && response.conversationId && response.message) {
-                        console.log('Received userId:', response.userId);
-                        console.log('Received conversationId:', response.conversationId);
-                        const key = `${response.userId}:${response.conversationId}`;
+                    if (response.userID && response.conversationID && response.message) {
+                        console.log('Received userID:', response.userID);
+                        console.log('Received conversationID:', response.conversationID);
+                        const key = `${response.userID}:${response.conversationID}`;
                         
                         // Log the key being used for the userDataMap
                         console.log('Key for sending proactive message:', key);
@@ -98,7 +98,7 @@ class BotActivityHandler extends TeamsActivityHandler {
                     }
 
                  else {
-                    console.error('Missing userId or conversationId in WebSocket message');
+                    console.error('Missing userID or conversationID in WebSocket message');
                 }
 
                 } catch (error) {
@@ -126,7 +126,7 @@ class BotActivityHandler extends TeamsActivityHandler {
         }, this.inactivityTimeout);
     }
 
-    async handleUserInput(context, userMessage, userId) {
+    async handleUserInput(context, userMessage, userID) {
         console.log('Handling user input:', userMessage); // Log the user's message
         if (!this.isWebSocketConnected && (!this.ws || this.ws.readyState !== WebSocket.CONNECTING)) {
             console.log('Reconnecting WebSocket due to user activity...');
@@ -134,8 +134,8 @@ class BotActivityHandler extends TeamsActivityHandler {
         }
         this.resetInactivityTimer();
     
-        const conversationId = context.activity.conversation.id;
-        const key = `${userId}:${conversationId}`; // 🆕 composite key
+        const conversationID = context.activity.conversation.id;
+        const key = `${userID}:${conversationID}`; // 🆕 composite key
 
             let userData = this.userDataMap.get(key) || { messageHistory: [], resetToken: false };
 
@@ -163,21 +163,21 @@ class BotActivityHandler extends TeamsActivityHandler {
         }
     
         userData.messageHistory.push(`user: ${userMessage}`);
-        this.userDataMap.set(userId, userData);
+        this.userDataMap.set(userID, userData);
     
         console.log(`✅ Retrieved User Email: ${userEmail}`);
     
         await context.sendActivity({ type: 'typing'});
     
         // ✅ Send message to WebSocket & API with user real email
-        await this.sendPayload(context, userData, userEmail, userId);
+        await this.sendPayload(context, userData, userEmail, userID);
     }
     
 
-    async sendPayload(context, userData, userEmail, userId) {
+    async sendPayload(context, userData, userEmail, userID) {
         const payload = {
-            userId: userId,
-            conversationId: context.activity.conversation.id,
+            userID: userID,
+            conversationID: context.activity.conversation.id,
             email: userEmail, // Now sending the real user email
             message: userData.messageHistory.join('\n'),
         };
@@ -228,10 +228,10 @@ class BotActivityHandler extends TeamsActivityHandler {
                 await context.sendActivity(MessageFactory.text(message));
                 
                 // ✅ Add bot response to message history
-                const userId = this.conversationReference.user.id;
-                let userData = this.userDataMap.get(userId) || { messageHistory: [] };
+                const userID = this.conversationReference.user.id;
+                let userData = this.userDataMap.get(userID) || { messageHistory: [] };
                 userData.messageHistory.push(`bot: ${message}`);
-                this.userDataMap.set(userId, userData);
+                this.userDataMap.set(userID, userData);
             });
         }
     }
