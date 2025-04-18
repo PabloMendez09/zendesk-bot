@@ -123,63 +123,64 @@ class BotActivityHandler extends TeamsActivityHandler {
     }
 
     async handleUserInput(context, userMessage, userID) {
-        console.log('Handling user input:', userMessage); // Log the user's message
+        console.log('Handling user input:', userMessage);
         if (!this.isWebSocketConnected && (!this.ws || this.ws.readyState !== WebSocket.CONNECTING)) {
             console.log('Reconnecting WebSocket due to user activity...');
             this.initWebSocket();
         }
         this.resetInactivityTimer();
-
+    
         const conversationID = context.activity.conversation.id;
-        const key = `${userID}:${conversationID}`; // 🆕 composite key
-
+        const key = `${userID}:${conversationID}`;
+    
         let userData = this.userDataMap.get(key) || { messageHistory: [], resetToken: false };
-
-        // 🆕 Store conversationReference
+    
         const conversationReference = TurnContext.getConversationReference(context.activity);
         this.userDataMap.set(key, {
             ...userData,
             conversationReference,
         });
-
-        // Check if resetToken is true and clear the message history
+    
         if (userData.resetToken) {
             console.log('Reset token detected. Clearing message history.');
-            userData.messageHistory = []; // Clear the message history
-            userData.resetToken = false; // Reset the flag
+            userData.messageHistory = [];
+            userData.resetToken = false;
         }
-
-        let userEmail = "Chris.Chapman@lionbridge.com"; // Default fallback
+    
+        let userEmail = "Chris.Chapman@lionbridge.com";
         try {
             const teamsMember = await TeamsInfo.getMember(context, context.activity.from.id);
             userEmail = teamsMember.email || userEmail;
         } catch (error) {
             console.error("❌ Unable to get user email:", error);
         }
-
-        userData.messageHistory.push(`user: ${userMessage}`);
-        this.userDataMap.set(userID, userData);
-
+    
+        // ✅ Save user message in structured format
+        userData.messageHistory.push({
+            role: 'user',
+            content: userMessage,
+        });
+        this.userDataMap.set(key, userData);
+    
         console.log(`✅ Retrieved User Email: ${userEmail}`);
-
         await context.sendActivity({ type: 'typing' });
-
-        // ✅ Send message to WebSocket & API with user real email
+    
         await this.sendPayload(context, userData, userEmail, userID);
     }
+    
 
     async sendPayload(context, userData, userEmail, userID) {
         const payload = {
             userID: userID,
             conversationID: context.activity.conversation.id,
-            email: userEmail, // Now sending the real user email
-            message: userMessage, // only the new user message
-            messageHistory: userData.messageHistory.join('\n'), // full history as array
+            email: userEmail,
+            message: context.activity.text.trim(), // this was missing earlier!
+            messageHistory: userData.messageHistory, // ✅ send as array, not string
         };
+    
         console.log('Sending payload:', payload);
-
-        console.log('WebSocket open:', this.ws.readyState === WebSocket.OPEN); // Log WebSocket state
-
+        console.log('WebSocket open:', this.ws.readyState === WebSocket.OPEN);
+    
         await Promise.all([
             this.sendToWebSocket(payload),
             this.sendToHTTP(payload).catch(error => {
@@ -187,6 +188,7 @@ class BotActivityHandler extends TeamsActivityHandler {
             }),
         ]);
     }
+    
 
     sendToWebSocket(payload) {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -220,36 +222,44 @@ class BotActivityHandler extends TeamsActivityHandler {
         if (this.conversationReference) {
             this.adapter.continueConversation(this.conversationReference, async (context) => {
                 await context.sendActivity(MessageFactory.text(message));
-
-                // ✅ Add bot response to message history
+    
                 const userID = this.conversationReference.user.id;
                 let userData = this.userDataMap.get(userID) || { messageHistory: [] };
-                userData.messageHistory.push(`bot: ${message}`);
-                this.userDataMap.set(userID, userData); // Update message history
+    
+                // ✅ Add structured bot message
+                userData.messageHistory.push({
+                    role: 'bot',
+                    content: message,
+                });
+                this.userDataMap.set(userID, userData);
             });
         }
     }
+    
 
     async sendProactiveMessageToConversation(key, message) {
-        console.log("can you see me")
+        console.log("can you see me");
         const userData = this.userDataMap.get(key);
         if (!userData || !userData.conversationReference) {
             console.error(`No conversation reference found for key: ${key}`);
             return;
         }
-
-        // Log the message being sent
+    
         console.log(`Sending message to user with key ${key}: ${message}`);
         const conversationReference = userData.conversationReference;
-
+    
         await this.adapter.continueConversation(conversationReference, async (context) => {
             await context.sendActivity(MessageFactory.text(message));
-
-            // Add bot message to message history
-            userData.messageHistory.push(`bot: ${message}`);
+    
+            // ✅ Add structured bot message
+            userData.messageHistory.push({
+                role: 'bot',
+                content: message,
+            });
             this.userDataMap.set(key, userData);
         });
     }
+    
 }
 
 module.exports.BotActivityHandler = BotActivityHandler;
