@@ -181,7 +181,8 @@ class BotActivityHandler extends TeamsActivityHandler {
             email: userEmail, // Now sending the real user email
             message: userData.messageHistory.join('\n'),
         };
-        console.log('Sending payload:', payload);
+        console.log('Payload being sent to WebSocket:', payload); 
+    console.log('Message History:', userData.messageHistory);
 
         console.log('WebSocket open:', this.ws.readyState === WebSocket.OPEN); // Log WebSocket state
     
