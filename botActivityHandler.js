@@ -173,7 +173,8 @@ class BotActivityHandler extends TeamsActivityHandler {
             userID: userID,
             conversationID: context.activity.conversation.id,
             email: userEmail, // Now sending the real user email
-            message: userData.messageHistory.join('\n'), // Full message history
+            message: userMessage, // only the new user message
+            messageHistory: userData.messageHistory.join('\n'), // full history as array
         };
         console.log('Sending payload:', payload);
 
