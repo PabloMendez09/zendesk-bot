@@ -136,10 +136,8 @@ class BotActivityHandler extends TeamsActivityHandler {
         let userData = this.userDataMap.get(key) || { messageHistory: [], resetToken: false };
     
         const conversationReference = TurnContext.getConversationReference(context.activity);
-        this.userDataMap.set(key, {
-            ...userData,
-            conversationReference,
-        });
+        userData.conversationReference = conversationReference;
+this.userDataMap.set(key, userData);
     
         if (userData.resetToken) {
             console.log('Reset token detected. Clearing message history.');
