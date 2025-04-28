@@ -12,81 +12,90 @@ class BotActivityHandler extends TeamsActivityHandler {
 
             const userMessage = context.activity.text.trim();
             const userID = context.activity.from.id;
+            const conversationReference = TurnContext.getConversationReference(context.activity);
             const conversationID = context.activity.conversation.id;
             const key = `${userID}:${conversationID}`;
 
-            console.log('📩 New message received:', userMessage);
-            console.log('👤 From userID:', userID);
-            console.log('🧵 Conversation ID:', conversationID);
+            console.log('📩 User message received:', userMessage);
+            console.log('📩 Conversation key:', key);
 
-            let userData = this.userDataMap.get(key) || { messageHistory: [] };
+            let userData = this.userDataMap.get(key) || { messageHistory: [], resetToken: false };
+            userData.conversationReference = conversationReference;
 
-            if (!userData.conversationReference) {
-                userData.conversationReference = TurnContext.getConversationReference(context.activity);
+            // If resetToken is true, clear the history
+            if (userData.resetToken) {
+                console.log('🔄 Reset token detected. Clearing message history.');
+                userData.messageHistory = [];
+                userData.resetToken = false;
             }
 
-            // Get user email
+            // Try to get user email
             let userEmail = "default@email.com";
             try {
-                const teamsMember = await TeamsInfo.getMember(context, context.activity.from.id);
+                const teamsMember = await TeamsInfo.getMember(context, userID);
                 userEmail = teamsMember.email || userEmail;
-                console.log('📧 Retrieved User Email:', userEmail);
             } catch (error) {
-                console.error('❌ Unable to get user email:', error.message);
+                console.error("❌ Unable to get user email:", error.message);
+            }
+            console.log(`📧 User email: ${userEmail}`);
+
+            // Build full conversation string (user: / bot: alternating)
+            const conversationLines = userData.messageHistory.map(entry => {
+                const role = entry.role === 'user' ? 'user' : 'bot';
+                return `${role}: ${entry.content}`;
+            });
+
+            // Add current user message
+            conversationLines.push(`user: ${userMessage}`);
+
+            const fullConversation = conversationLines.join('  '); // Two spaces between messages
+
+            // Build payload
+            const payload = {
+                userID: userID,
+                conversationID: conversationID,
+                email: userEmail,
+                message: fullConversation, // 🆕 full conversation as one string
+            };
+
+            console.log('📤 Payload sending to AI:', JSON.stringify(payload, null, 2));
+
+            // Send typing indicator
+            await context.sendActivity({ type: 'typing' });
+
+            try {
+                const aiResponse = await axios.post('https://rag-zendesk.azurewebsites.net/api/ZendeskBot', payload);
+                console.log('📥 AI raw response received:', JSON.stringify(aiResponse.data, null, 2));
+
+                const { message, resetToken } = aiResponse.data || {};
+
+                if (resetToken) {
+                    console.log('🔄 AI instructed to reset conversation.');
+                    userData.messageHistory = []; // Clear history if AI tells us
+                }
+
+                if (message) {
+                    console.log('💬 Sending AI reply to user:', message);
+                    await context.sendActivity(MessageFactory.text(message));
+
+                    // Save bot reply into memory
+                    userData.messageHistory.push({ role: 'bot', content: message });
+                }
+
+            } catch (error) {
+                console.error('❌ AI endpoint call failed:', error.response ? error.response.data : error.message);
+                await context.sendActivity(MessageFactory.text("Sorry, something went wrong contacting AI."));
             }
 
-            // Add user message to history
+            // Save user's new message to history
             userData.messageHistory.push({ role: 'user', content: userMessage });
             this.userDataMap.set(key, userData);
 
-            await context.sendActivity({ type: 'typing' });
-
-            // Send payload to AI endpoint
-            await this.sendToAI(context, userData, userEmail, userID, conversationID, key);
-
             const elapsedTime = Date.now() - startTime;
-            console.log(`⏱️ Response Time: ${elapsedTime}ms`);
+            console.log(`✅ Finished handling message in ${elapsedTime}ms`);
 
             await next();
         });
-    }
-
-    async sendToAI(context, userData, userEmail, userID, conversationID, key) {
-        const payload = {
-            userID: userID,
-            conversationID: conversationID,
-            email: userEmail,
-            message: context.activity.text.trim(),
-            messageHistory: userData.messageHistory,
-        };
-
-        console.log('🚀 Sending payload to AI endpoint:', payload);
-
-        try {
-            const aiResponse = await axios.post('https://rag-zendesk.azurewebsites.net/api/ZendeskBot', payload);
-            console.log('📥 AI raw response received:', aiResponse.data);
-
-            if (aiResponse.data && aiResponse.data.message) {
-                const aiMessage = aiResponse.data.message;
-
-                if (aiResponse.data.resetToken === true) {
-                    console.log('🔄 Reset token detected. Clearing message history.');
-                    userData.messageHistory = [];
-                    this.userDataMap.set(key, userData);
-                } else {
-                    userData.messageHistory.push({ role: 'bot', content: aiMessage });
-                    this.userDataMap.set(key, userData);
-                }
-
-                console.log('📤 Sending AI reply back to user:', aiMessage);
-                await context.sendActivity(MessageFactory.text(aiMessage));
-            } else {
-                console.error('⚠️ AI response missing message field.');
-            }
-        } catch (error) {
-            console.error('❌ Error communicating with AI endpoint:', error.message);
-            await context.sendActivity(MessageFactory.text("Sorry, there was an error processing your request."));
-        }
     }
 }
 
