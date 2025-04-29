@@ -22,11 +22,11 @@ class BotActivityHandler extends TeamsActivityHandler {
             let userData = this.userDataMap.get(key) || { messageHistory: [], resetToken: false };
             userData.conversationReference = conversationReference;
 
-            // If resetToken is true, clear the history
+            // If resetToken is true, clear the history and reset everything
             if (userData.resetToken) {
-                console.log('🔄 Reset token detected. Clearing message history.');
-                userData.messageHistory = [];
-                userData.resetToken = false;
+                console.log('🔄 Reset token detected. Clearing message history and resetting session.');
+                userData.messageHistory = []; // Completely clear message history
+                userData.resetToken = false; // Reset the reset token flag
             }
 
             // Try to get user email
@@ -71,15 +71,18 @@ class BotActivityHandler extends TeamsActivityHandler {
 
                 if (resetToken) {
                     console.log('🔄 AI instructed to reset conversation.');
-                    userData.messageHistory = []; // Clear history if AI tells us
+                    userData.messageHistory = []; // Clear history if AI tells us to reset
+                    userData.resetToken = true; // Set resetToken flag to ensure it's cleared next time
                 }
 
                 if (message) {
                     console.log('💬 Sending AI reply to user:', message);
                     await context.sendActivity(MessageFactory.text(message));
 
-                    // Save bot reply into memory
-                    userData.messageHistory.push({ role: 'bot', content: message });
+                    // Save bot reply into memory (after reset)
+                    if (!userData.resetToken) {
+                        userData.messageHistory.push({ role: 'bot', content: message });
+                    }
                 }
 
             } catch (error) {
@@ -87,8 +90,10 @@ class BotActivityHandler extends TeamsActivityHandler {
                 await context.sendActivity(MessageFactory.text("Sorry, something went wrong contacting AI."));
             }
 
-            // Save user's new message to history
-            userData.messageHistory.push({ role: 'user', content: userMessage });
+            // Save user's new message to history (after reset, this is the only message in history)
+            if (!userData.resetToken) {
+                userData.messageHistory.push({ role: 'user', content: userMessage });
+            }
             this.userDataMap.set(key, userData);
 
             const elapsedTime = Date.now() - startTime;
