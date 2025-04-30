@@ -22,13 +22,6 @@ class BotActivityHandler extends TeamsActivityHandler {
             let userData = this.userDataMap.get(key) || { messageHistory: [], resetToken: false };
             userData.conversationReference = conversationReference;
 
-            // If resetToken is true, clear the history and reset everything
-            if (userData.resetToken) {
-                console.log('🔄 Reset token detected. Clearing message history and resetting session.');
-                userData.messageHistory = []; // Completely clear message history
-                userData.resetToken = false; // Reset the reset token flag
-            }
-
             // Try to get user email
             let userEmail = "default@email.com";
             try {
@@ -39,23 +32,19 @@ class BotActivityHandler extends TeamsActivityHandler {
             }
             console.log(`📧 User email: ${userEmail}`);
 
-            // Build full conversation string (user: / bot: alternating)
-            const conversationLines = userData.messageHistory.map(entry => {
-                const role = entry.role === 'user' ? 'user' : 'bot';
-                return `${role}: ${entry.content}`;
-            });
+            // Add user message to history (even if resetToken is active)
+            userData.messageHistory.push({ role: 'user', content: userMessage });
 
-            // Add current user message
-            conversationLines.push(`user: ${userMessage}`);
+            // Build conversation string
+            const fullConversation = userData.messageHistory
+                .map(entry => `${entry.role}: ${entry.content}`)
+                .join('  '); // Two spaces between messages
 
-            const fullConversation = conversationLines.join('  '); // Two spaces between messages
-
-            // Build payload
             const payload = {
                 userID: userID,
                 conversationID: conversationID,
                 email: userEmail,
-                message: fullConversation, // 🆕 full conversation as one string
+                message: fullConversation,
             };
 
             console.log('📤 Payload sending to AI:', JSON.stringify(payload, null, 2));
@@ -69,20 +58,18 @@ class BotActivityHandler extends TeamsActivityHandler {
 
                 const { message, resetToken } = aiResponse.data || {};
 
-                if (resetToken) {
-                    console.log('🔄 AI instructed to reset conversation.');
-                    userData.messageHistory = []; // Clear history if AI tells us to reset
-                    userData.resetToken = true; // Set resetToken flag to ensure it's cleared next time
-                }
-
                 if (message) {
                     console.log('💬 Sending AI reply to user:', message);
                     await context.sendActivity(MessageFactory.text(message));
+                    userData.messageHistory.push({ role: 'bot', content: message });
+                }
 
-                    // Save bot reply into memory (after reset)
-                    if (!userData.resetToken) {
-                        userData.messageHistory.push({ role: 'bot', content: message });
-                    }
+                if (resetToken) {
+                    console.log('🔄 AI instructed to reset conversation.');
+                    userData.messageHistory = [];
+                    userData.resetToken = true;
+                } else {
+                    userData.resetToken = false;
                 }
 
             } catch (error) {
@@ -90,10 +77,6 @@ class BotActivityHandler extends TeamsActivityHandler {
                 await context.sendActivity(MessageFactory.text("Sorry, something went wrong contacting AI."));
             }
 
-            // Save user's new message to history (after reset, this is the only message in history)
-            if (!userData.resetToken) {
-                userData.messageHistory.push({ role: 'user', content: userMessage });
-            }
             this.userDataMap.set(key, userData);
 
             const elapsedTime = Date.now() - startTime;
