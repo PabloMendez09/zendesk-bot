@@ -10,7 +10,7 @@ class BotActivityHandler extends TeamsActivityHandler {
         this.onMessage(async (context, next) => {
             const startTime = Date.now();
 
-            const userMessage = context.activity.text.trim();
+            const userMessage = context.activity.text?.trim();
             const userID = context.activity.from.id;
             const conversationReference = TurnContext.getConversationReference(context.activity);
             const conversationID = context.activity.conversation.id;
@@ -41,8 +41,8 @@ class BotActivityHandler extends TeamsActivityHandler {
                 .join('  '); // Two spaces between messages
 
             const payload = {
-                userID: userID,
-                conversationID: conversationID,
+                userID,
+                conversationID,
                 email: userEmail,
                 message: fullConversation,
             };
@@ -53,7 +53,7 @@ class BotActivityHandler extends TeamsActivityHandler {
             await context.sendActivity({ type: 'typing' });
 
             try {
-                const aiResponse = await axios.post('https://rag-zendesk.azurewebsites.net/api/ZendeskBot', payload);
+                const aiResponse = await postWithRetry('https://rag-zendesk.azurewebsites.net/api/ZendeskBot', payload);
                 console.log('📥 AI raw response received:', JSON.stringify(aiResponse.data, null, 2));
 
                 const { message, resetToken } = aiResponse.data || {};
@@ -73,7 +73,7 @@ class BotActivityHandler extends TeamsActivityHandler {
                 }
 
             } catch (error) {
-                console.error('❌ AI endpoint call failed:', error.response ? error.response.data : error.message);
+                console.error('❌ AI endpoint call failed:', error.response?.data || error.message);
                 await context.sendActivity(MessageFactory.text("Sorry, something went wrong contacting AI."));
             }
 
@@ -84,6 +84,19 @@ class BotActivityHandler extends TeamsActivityHandler {
 
             await next();
         });
+    }
+}
+
+// 🔁 Retry utility function
+async function postWithRetry(url, payload, retries = 3, delay = 1500) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            return await axios.post(url, payload, { timeout: 8000 }); // Set timeout to avoid hanging
+        } catch (error) {
+            console.warn(`⚠️ Attempt ${attempt} failed: ${error.message}`);
+            if (attempt === retries) throw error;
+            await new Promise(res => setTimeout(res, delay));
+        }
     }
 }
 
