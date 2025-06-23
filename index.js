@@ -1,8 +1,7 @@
 const { BotFrameworkAdapter } = require('botbuilder');
 const express = require('express');
+const axios = require('axios');
 const { BotActivityHandler } = require('./botActivityHandler');
-
-// Load environment variables
 require('dotenv').config();
 
 // Create the adapter
@@ -11,30 +10,30 @@ const adapter = new BotFrameworkAdapter({
     appPassword: process.env.MicrosoftAppPassword,
 });
 
-// Error handling for the adapter
+// Error handling
 adapter.onTurnError = async (context, error) => {
     console.error('[onTurnError] Unhandled error:', error);
-
-    // Send a message to the user
     await context.sendActivity('Oops! Something went wrong. Please try again later.');
-
-    // Log the error and clear the conversation state (if applicable)
-    console.error('Full error details:', JSON.stringify(error, null, 2));
 };
 
 // Create the bot
-const bot = new BotActivityHandler(adapter); // Pass the adapter to the bot
+const bot = new BotActivityHandler(adapter);
 
 // Set up Express server
 const app = express();
 app.use(express.json());
 
-// Health check endpoint
+// ✅ Lightweight ping endpoint
+app.get('/ping', (req, res) => {
+    res.status(200).send('pong');
+});
+
+// ✅ Optional: existing health endpoint
 app.get('/health', (req, res) => {
     res.status(200).send('Bot is healthy and running!');
 });
 
-// Endpoint for Bot Framework messages
+// Endpoint for messages
 app.post('/api/messages', (req, res) => {
     adapter.processActivity(req, res, async (context) => {
         try {
@@ -45,6 +44,14 @@ app.post('/api/messages', (req, res) => {
         }
     });
 });
+
+// ✅ Keep-alive ping (self-ping every 5 minutes)
+setInterval(() => {
+    const botUrl = process.env.KEEP_ALIVE_URL || `http://localhost:${PORT}/ping`;
+    axios.get(botUrl)
+        .then(() => console.log('✅ Keep-alive ping sent to:', botUrl))
+        .catch(err => console.error('❌ Keep-alive ping failed:', err.message));
+}, 5 * 60 * 1000); // 5 minutes
 
 // Start the server
 const PORT = process.env.PORT || 3978;
