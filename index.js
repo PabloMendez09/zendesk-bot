@@ -47,7 +47,7 @@ app.post('/api/messages', (req, res) => {
 
 // ✅ Keep-alive ping (self-ping every 5 minutes)
 setInterval(() => {
-    const botUrl = process.env.KEEP_ALIVE_URL || `zendeskendpoint-cadne9guf2g3bmf6.canadacentral-01.azurewebsites.net/api/messages`;
+    const botUrl = process.env.KEEP_ALIVE_URL || `http://localhost:${PORT}/ping`;
     axios.get(botUrl)
         .then(() => console.log('✅ Keep-alive ping sent to:', botUrl))
         .catch(err => console.error('❌ Keep-alive ping failed:', err.message));
