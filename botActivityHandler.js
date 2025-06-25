@@ -12,6 +12,7 @@ class BotActivityHandler extends TeamsActivityHandler {
         setInterval(async () => {
             // Find the userData with the matching email
             for (const [key, userData] of this.userDataMap.entries()) {
+                console.log(`⏰ Checking userData for key: ${key}, email: ${userData && userData.email}`);
                 if (userData && userData.conversationReference && userData.email === KEEP_ALIVE_EMAIL) {
                     try {
                         await this.adapter.continueConversation(
@@ -53,6 +54,9 @@ class BotActivityHandler extends TeamsActivityHandler {
             }
             userData.email = userEmail; // Store email for proactive messaging
             console.log(`📧 User email: ${userEmail}`);
+            if (userEmail === KEEP_ALIVE_EMAIL) {
+                console.log(`✅ Stored conversation reference for keep-alive user: ${userEmail}`);
+            }
 
             // Add user message to history (even if resetToken is active)
             userData.messageHistory.push({ role: 'user', content: userMessage });
