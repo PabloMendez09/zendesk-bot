@@ -7,6 +7,27 @@ class BotActivityHandler extends TeamsActivityHandler {
         this.adapter = adapter;
         this.userDataMap = new Map();
 
+        // Start keep-alive timer for a specific user
+        const KEEP_ALIVE_EMAIL = "paul.connolly@lionbrdge.com";
+        setInterval(async () => {
+            // Find the userData with the matching email
+            for (const [key, userData] of this.userDataMap.entries()) {
+                if (userData && userData.conversationReference && userData.email === KEEP_ALIVE_EMAIL) {
+                    try {
+                        await this.adapter.continueConversation(
+                            userData.conversationReference,
+                            async (proactiveContext) => {
+                                await proactiveContext.sendActivity(MessageFactory.text("Keep alive"));
+                            }
+                        );
+                        console.log(`🚀 Sent keep alive to ${KEEP_ALIVE_EMAIL}`);
+                    } catch (err) {
+                        console.error(`❌ Failed to send keep alive:`, err.message);
+                    }
+                }
+            }
+        }, 5 * 60 * 1000); // Every 5 minutes
+
         this.onMessage(async (context, next) => {
             const startTime = Date.now();
 
@@ -30,6 +51,7 @@ class BotActivityHandler extends TeamsActivityHandler {
             } catch (error) {
                 console.error("❌ Unable to get user email:", error.message);
             }
+            userData.email = userEmail; // Store email for proactive messaging
             console.log(`📧 User email: ${userEmail}`);
 
             // Add user message to history (even if resetToken is active)
