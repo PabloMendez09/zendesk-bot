@@ -14,6 +14,7 @@ class BotActivityHandler extends TeamsActivityHandler {
             for (const [key, userData] of this.userDataMap.entries()) {
                 console.log(`⏰ Checking userData for key: ${key}, email: ${userData && userData.email}`);
                 if (userData && userData.conversationReference && userData.email === KEEP_ALIVE_EMAIL) {
+                    console.log(`🔎 Found keep-alive userData:`, JSON.stringify(userData, null, 2));
                     try {
                         await this.adapter.continueConversation(
                             userData.conversationReference,
@@ -23,7 +24,7 @@ class BotActivityHandler extends TeamsActivityHandler {
                         );
                         console.log(`🚀 Sent keep alive to ${KEEP_ALIVE_EMAIL}`);
                     } catch (err) {
-                        console.error(`❌ Failed to send keep alive:`, err.message);
+                        console.error(`❌ Failed to send keep alive:`, err && (err.stack || err.message || err));
                     }
                 }
             }
