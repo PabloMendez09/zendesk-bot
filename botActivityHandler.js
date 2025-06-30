@@ -10,10 +10,11 @@ class BotActivityHandler extends TeamsActivityHandler {
         // Start keep-alive timer for a specific user
         const KEEP_ALIVE_EMAIL = "paul.connolly@lionbridge.com";
         setInterval(async () => {
-            // Find the userData with the matching email
+            // Find the userData with the matching email (case-insensitive)
             for (const [key, userData] of this.userDataMap.entries()) {
-                console.log(`⏰ Checking userData for key: ${key}, email: ${userData && userData.email}`);
-                if (userData && userData.conversationReference && userData.email === KEEP_ALIVE_EMAIL) {
+                const userEmail = userData && userData.email ? userData.email.toLowerCase() : null;
+                console.log(`⏰ Checking userData for key: ${key}, email: ${userEmail}`);
+                if (userData && userData.conversationReference && userEmail === KEEP_ALIVE_EMAIL.toLowerCase()) {
                     console.log(`🔎 Found keep-alive userData:`, JSON.stringify(userData, null, 2));
                     try {
                         await this.adapter.continueConversation(
@@ -55,7 +56,7 @@ class BotActivityHandler extends TeamsActivityHandler {
             }
             userData.email = userEmail; // Store email for proactive messaging
             console.log(`📧 User email: ${userEmail}`);
-            if (userEmail === KEEP_ALIVE_EMAIL) {
+            if (userEmail.toLowerCase() === KEEP_ALIVE_EMAIL.toLowerCase()) {
                 console.log(`✅ Stored conversation reference for keep-alive user: ${userEmail}`);
             }
 
