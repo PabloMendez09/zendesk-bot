@@ -8,7 +8,7 @@ class BotActivityHandler extends TeamsActivityHandler {
         this.userDataMap = new Map();
 
         // Start keep-alive timer for a specific user
-        const KEEP_ALIVE_EMAIL = "paul.connolly@lionbrdge.com";
+        const KEEP_ALIVE_EMAIL = "paul.connolly@lionbridge.com";
         setInterval(async () => {
             // Find the userData with the matching email
             for (const [key, userData] of this.userDataMap.entries()) {
