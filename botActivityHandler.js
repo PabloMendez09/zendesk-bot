@@ -1,5 +1,34 @@
+require('dotenv').config();
 const { TeamsActivityHandler, MessageFactory, TurnContext, TeamsInfo } = require('botbuilder');
 const axios = require('axios');
+const { TableClient } = require("@azure/data-tables");
+
+const AZURE_TABLE_CONNECTION_STRING = process.env.AZURE_TABLE_CONNECTION_STRING;
+const TABLE_NAME = "ConversationReferences";
+
+function getTableClient() {
+    return TableClient.fromConnectionString(AZURE_TABLE_CONNECTION_STRING, TABLE_NAME);
+}
+
+async function saveConversationReference(email, conversationReference) {
+    const client = getTableClient();
+    await client.createTable(); // Safe if already exists
+    await client.upsertEntity({
+        partitionKey: "user",
+        rowKey: email.toLowerCase(),
+        conversationReference: JSON.stringify(conversationReference)
+    });
+}
+
+async function loadConversationReference(email) {
+    const client = getTableClient();
+    try {
+        const entity = await client.getEntity("user", email.toLowerCase());
+        return JSON.parse(entity.conversationReference);
+    } catch (e) {
+        return null;
+    }
+}
 
 class BotActivityHandler extends TeamsActivityHandler {
     constructor(adapter) {
@@ -7,27 +36,24 @@ class BotActivityHandler extends TeamsActivityHandler {
         this.adapter = adapter;
         this.userDataMap = new Map();
 
-        // Start keep-alive timer for a specific user
-        const KEEP_ALIVE_EMAIL = "paul.connolly@lionbridge.com";
+        // Start keep-alive timer for a specific user (Paul.Connolly@lionbridge.com)
+        const KEEP_ALIVE_EMAIL = "Paul.Connolly@lionbridge.com";
         setInterval(async () => {
-            // Find the userData with the matching email (case-insensitive)
-            for (const [key, userData] of this.userDataMap.entries()) {
-                const userEmail = userData && userData.email ? userData.email.toLowerCase() : null;
-                console.log(`⏰ Checking userData for key: ${key}, email: ${userEmail}`);
-                if (userData && userData.conversationReference && userEmail === KEEP_ALIVE_EMAIL.toLowerCase()) {
-                    console.log(`🔎 Found keep-alive userData:`, JSON.stringify(userData, null, 2));
-                    try {
-                        await this.adapter.continueConversation(
-                            userData.conversationReference,
-                            async (proactiveContext) => {
-                                await proactiveContext.sendActivity(MessageFactory.text("Keep alive"));
-                            }
-                        );
-                        console.log(`🚀 Sent keep alive to ${KEEP_ALIVE_EMAIL}`);
-                    } catch (err) {
-                        console.error(`❌ Failed to send keep alive:`, err && (err.stack || err.message || err));
-                    }
+            try {
+                const conversationReference = await loadConversationReference(KEEP_ALIVE_EMAIL);
+                if (conversationReference) {
+                    await this.adapter.continueConversation(
+                        conversationReference,
+                        async (proactiveContext) => {
+                            await proactiveContext.sendActivity(MessageFactory.text("Keep alive"));
+                        }
+                    );
+                    console.log(`🚀 Sent keep alive to ${KEEP_ALIVE_EMAIL}`);
+                } else {
+                    console.log(`ℹ️ No conversation reference found for ${KEEP_ALIVE_EMAIL}`);
                 }
+            } catch (err) {
+                console.error(`❌ Failed to send keep alive:`, err && (err.stack || err.message || err));
             }
         }, 5 * 60 * 1000); // Every 5 minutes
 
@@ -59,6 +85,8 @@ class BotActivityHandler extends TeamsActivityHandler {
             if (userEmail.toLowerCase() === KEEP_ALIVE_EMAIL.toLowerCase()) {
                 console.log(`✅ Stored conversation reference for keep-alive user: ${userEmail}`);
             }
+            // Save conversation reference to Azure Table Storage for keep-alive
+            await saveConversationReference(userEmail, conversationReference);
 
             // Add user message to history (even if resetToken is active)
             userData.messageHistory.push({ role: 'user', content: userMessage });

@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@azure/core-http": "^3.0.5",
+    "@azure/data-tables": "^13.3.1",
     "axios": "^1.6.2",
     "botbuilder": "^4.20.0",
     "botframework-connector": "^4.20.0",
