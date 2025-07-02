@@ -4,6 +4,7 @@ const axios = require('axios');
 const { TableClient } = require("@azure/data-tables");
 
 const AZURE_TABLE_CONNECTION_STRING = process.env.AZURE_TABLE_CONNECTION_STRING;
+console.log("AZURE_TABLE_CONNECTION_STRING:", AZURE_TABLE_CONNECTION_STRING ? "Loaded" : "NOT SET");
 const TABLE_NAME = "ConversationReferences";
 
 function getTableClient() {
@@ -11,21 +12,27 @@ function getTableClient() {
 }
 
 async function saveConversationReference(email, conversationReference) {
-    const client = getTableClient();
-    await client.createTable(); // Safe if already exists
-    await client.upsertEntity({
-        partitionKey: "user",
-        rowKey: email.toLowerCase(),
-        conversationReference: JSON.stringify(conversationReference)
-    });
+    try {
+        const client = getTableClient();
+        await client.createTable(); // Safe if already exists
+        await client.upsertEntity({
+            partitionKey: "user",
+            rowKey: email.toLowerCase(),
+            conversationReference: JSON.stringify(conversationReference)
+        });
+        console.log("Saved conversation reference for", email);
+    } catch (e) {
+        console.error("Error saving conversation reference:", e);
+    }
 }
 
 async function loadConversationReference(email) {
-    const client = getTableClient();
     try {
+        const client = getTableClient();
         const entity = await client.getEntity("user", email.toLowerCase());
         return JSON.parse(entity.conversationReference);
     } catch (e) {
+        console.error("Error loading conversation reference:", e);
         return null;
     }
 }
